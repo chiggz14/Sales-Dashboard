@@ -8,40 +8,28 @@ FILE_PATH = "sales dashboard.csv"
 st.set_page_config(layout="wide")
 st.title("📊 Sales Dashboard")
 
-# --- CALCULATION FUNCTION ---
-def recalculate_missing(df):
+# --- RECALCULATION FUNCTION (ALWAYS RE-CALCULATES) ---
+def recalculate_all(df):
     df = df.copy()
 
     # Clean column names
     df.columns = df.columns.str.strip()
 
-    # Ensure numeric columns are numeric
-    numeric_cols = [
-        "Bought For", "Sold For", "Fees",
-        "Profit", "Profit Margin", "ROI", "Net Profit"
-    ]
+    # Convert numeric columns
+    numeric_cols = ["Bought For", "Sold For", "Fees"]
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Profit
-    df.loc[df["Profit"].isna(), "Profit"] = (
-        df["Sold For"] - df["Bought For"]
-    )
+    # Core calculations
+    df["Profit"] = df["Sold For"] - df["Bought For"]
+    df["Net Profit"] = df["Profit"] - df["Fees"]
 
-    # Net Profit
-    df.loc[df["Net Profit"].isna(), "Net Profit"] = (
-        df["Profit"] - df["Fees"]
-    )
+    df["Profit Margin"] = (df["Profit"] / df["Sold For"]) * 100
+    df["ROI"] = (df["Profit"] / df["Bought For"]) * 100
 
-    # Profit Margin (%)
-    df.loc[df["Profit Margin"].isna(), "Profit Margin"] = (
-        (df["Profit"] / df["Sold For"]) * 100
-    )
-
-    # ROI (%)
-    df.loc[df["ROI"].isna(), "ROI"] = (
-        (df["Profit"] / df["Bought For"]) * 100
-    )
+    # Handle divide-by-zero / NaNs
+    df["Profit Margin"] = df["Profit Margin"].fillna(0)
+    df["ROI"] = df["ROI"].fillna(0)
 
     return df
 
@@ -51,7 +39,7 @@ def load_data():
     if os.path.exists(FILE_PATH):
         df = pd.read_csv(FILE_PATH)
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        df = recalculate_missing(df)
+        df = recalculate_all(df)
     else:
         df = pd.DataFrame(columns=[
             "Date", "Name", "Category", "Bought For", "Sold For",
@@ -62,7 +50,7 @@ def load_data():
 
 df = load_data()
 
-# --- FILTERS ---
+# --- SIDEBAR FILTERS ---
 st.sidebar.header("Filters")
 
 category_filter = st.sidebar.multiselect(
@@ -83,7 +71,7 @@ filtered_df = df[
 ]
 
 # --- EDITABLE TABLE ---
-st.subheader("📋 Sales Data")
+st.subheader("📋 Sales Data (Edit Below)")
 
 edited_df = st.data_editor(
     filtered_df,
@@ -92,13 +80,13 @@ edited_df = st.data_editor(
     disabled=["Profit", "Profit Margin", "ROI", "Net Profit"]
 )
 
-# Recalculate after edits
-edited_df = recalculate_missing(edited_df)
+# ✅ CRITICAL: RECALCULATE AFTER ANY EDIT
+edited_df = recalculate_all(edited_df)
 
 # --- SAVE BUTTON ---
 if st.button("💾 Save Changes"):
     edited_df.to_csv(FILE_PATH, index=False)
-    st.success("Changes saved!")
+    st.success("✅ Changes saved!")
 
 # --- ADD NEW ENTRY ---
 st.subheader("➕ Add New Entry")
@@ -119,30 +107,23 @@ with st.form("new_entry_form"):
     submitted = st.form_submit_button("Add Entry")
 
     if submitted:
-        profit = sold_for - bought_for
-        net_profit = profit - fees
-        profit_margin = (profit / sold_for) * 100 if sold_for != 0 else 0
-        roi = (profit / bought_for) * 100 if bought_for != 0 else 0
-
         new_row = pd.DataFrame([{
             "Date": date,
             "Name": name,
             "Category": category,
             "Bought For": bought_for,
             "Sold For": sold_for,
-            "Profit": profit,
-            "Profit Margin": profit_margin,
-            "ROI": roi,
-            "Fees": fees,
-            "Net Profit": net_profit
+            "Fees": fees
         }])
+
+        new_row = recalculate_all(new_row)
 
         df = pd.concat([df, new_row], ignore_index=True)
         df.to_csv(FILE_PATH, index=False)
 
-        st.success("New entry added!")
+        st.success("✅ New entry added!")
 
-# --- METRICS ---
+# --- KPIs ---
 st.subheader("📈 Key Metrics")
 
 col1, col2, col3, col4 = st.columns(4)
