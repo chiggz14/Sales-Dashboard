@@ -8,11 +8,10 @@ FILE_PATH = "sales dashboard.csv"
 st.set_page_config(layout="wide")
 st.title("📊 Sales Dashboard")
 
-# --- RECALCULATION FUNCTION (ALWAYS RE-CALCULATES) ---
+# --- RECALCULATION FUNCTION ---
 def recalculate_all(df):
     df = df.copy()
 
-    # Clean column names
     df.columns = df.columns.str.strip()
 
     # Convert numeric columns
@@ -20,14 +19,13 @@ def recalculate_all(df):
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Core calculations
+    # Recalculate
     df["Profit"] = df["Sold For"] - df["Bought For"]
     df["Net Profit"] = df["Profit"] - df["Fees"]
-
     df["Profit Margin"] = (df["Profit"] / df["Sold For"]) * 100
     df["ROI"] = (df["Profit"] / df["Bought For"]) * 100
 
-    # Handle divide-by-zero / NaNs
+    # Handle NaNs / division issues
     df["Profit Margin"] = df["Profit Margin"].fillna(0)
     df["ROI"] = df["ROI"].fillna(0)
 
@@ -39,7 +37,7 @@ def load_data():
     if os.path.exists(FILE_PATH):
         df = pd.read_csv(FILE_PATH)
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        df = recalculate_all(df)
+        df.columns = df.columns.str.strip()
     else:
         df = pd.DataFrame(columns=[
             "Date", "Name", "Category", "Bought For", "Sold For",
@@ -50,43 +48,42 @@ def load_data():
 
 df = load_data()
 
-# --- SIDEBAR FILTERS ---
+# --- FILTERS ---
 st.sidebar.header("Filters")
 
-category_filter = st.sidebar.multiselect(
-    "Category",
-    options=df["Category"].dropna().unique(),
-    default=df["Category"].dropna().unique()
-)
+categories = df["Category"].dropna().unique()
+names = df["Name"].dropna().unique()
 
-name_filter = st.sidebar.multiselect(
-    "Name",
-    options=df["Name"].dropna().unique(),
-    default=df["Name"].dropna().unique()
-)
+category_filter = st.sidebar.multiselect("Category", options=categories)
+name_filter = st.sidebar.multiselect("Name", options=names)
 
-filtered_df = df[
-    (df["Category"].isin(category_filter)) &
-    (df["Name"].isin(name_filter))
-]
+# ✅ FIX: Show ALL if filters empty
+filtered_df = df.copy()
+
+if category_filter:
+    filtered_df = filtered_df[filtered_df["Category"].isin(category_filter)]
+
+if name_filter:
+    filtered_df = filtered_df[filtered_df["Name"].isin(name_filter)]
+
 
 # --- EDITABLE TABLE ---
-st.subheader("📋 Sales Data (Edit Below)")
+st.subheader("📋 Sales Data")
 
 edited_df = st.data_editor(
     filtered_df,
     use_container_width=True,
-    num_rows="dynamic",
-    disabled=["Profit", "Profit Margin", "ROI", "Net Profit"]
+    num_rows="dynamic"
 )
 
-# ✅ CRITICAL: RECALCULATE AFTER ANY EDIT
-edited_df = recalculate_all(edited_df)
-
-# --- SAVE BUTTON ---
+# --- SAVE BUTTON WITH RECALCULATION ---
 if st.button("💾 Save Changes"):
-    edited_df.to_csv(FILE_PATH, index=False)
-    st.success("✅ Changes saved!")
+    # ✅ Recalculate ONLY HERE
+    updated_df = recalculate_all(edited_df)
+
+    updated_df.to_csv(FILE_PATH, index=False)
+
+    st.success("✅ Changes saved and calculations updated!")
 
 # --- ADD NEW ENTRY ---
 st.subheader("➕ Add New Entry")
@@ -116,10 +113,11 @@ with st.form("new_entry_form"):
             "Fees": fees
         }])
 
+        # ✅ Calculate before saving
         new_row = recalculate_all(new_row)
 
-        df = pd.concat([df, new_row], ignore_index=True)
-        df.to_csv(FILE_PATH, index=False)
+        df_updated = pd.concat([df, new_row], ignore_index=True)
+        df_updated.to_csv(FILE_PATH, index=False)
 
         st.success("✅ New entry added!")
 
@@ -130,7 +128,7 @@ col1, col2, col3, col4 = st.columns(4)
 
 col1.metric("Revenue", f"£{filtered_df['Sold For'].sum():,.2f}")
 col2.metric("Profit", f"£{filtered_df['Profit'].sum():,.2f}")
-col3.metric("Avg ROI", f"{filtered_df['ROI'].mean():.1f}%")
+col3.metric("Avg ROI", f"{filtered_df['ROI'].mean():.1f}")
 col4.metric("Items", len(filtered_df))
 
 # --- CHARTS ---
