@@ -1,18 +1,22 @@
-
 import streamlit as st
 import pandas as pd
+import os
 
-# --- CONFIG ---
-CSV_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/your_file.csv"
+FILE_PATH = "sales_data.csv"
 
 st.set_page_config(layout="wide")
 st.title("📊 Sales Dashboard")
 
 # --- LOAD DATA ---
-@st.cache_data
 def load_data():
-    df = pd.read_csv(CSV_URL)
-    df["Date"] = pd.to_datetime(df["Date"])
+    if os.path.exists(FILE_PATH):
+        df = pd.read_csv(FILE_PATH)
+        df["Date"] = pd.to_datetime(df["Date"])
+    else:
+        df = pd.DataFrame(columns=[
+            "Date","Name","Category","Bought For","Sold For",
+            "Profit","Profit Margin","ROI","Fees","Net Profit"
+        ])
     return df
 
 df = load_data()
@@ -22,14 +26,14 @@ st.sidebar.header("Filters")
 
 category_filter = st.sidebar.multiselect(
     "Category",
-    options=df["Category"].unique(),
-    default=df["Category"].unique()
+    options=df["Category"].dropna().unique(),
+    default=df["Category"].dropna().unique()
 )
 
 name_filter = st.sidebar.multiselect(
     "Name",
-    options=df["Name"].unique(),
-    default=df["Name"].unique()
+    options=df["Name"].dropna().unique(),
+    default=df["Name"].dropna().unique()
 )
 
 filtered_df = df[
@@ -37,9 +41,19 @@ filtered_df = df[
     (df["Name"].isin(name_filter))
 ]
 
-# --- DISPLAY TABLE ---
-st.subheader("📋 Sales Data")
-edited_df = st.data_editor(filtered_df, num_rows="dynamic")
+# --- EDITABLE TABLE ---
+st.subheader("📋 Sales Data (Editable)")
+
+edited_df = st.data_editor(
+    filtered_df,
+    num_rows="dynamic",
+    use_container_width=True
+)
+
+# SAVE BUTTON FOR EDITS
+if st.button("💾 Save Changes"):
+    edited_df.to_csv(FILE_PATH, index=False)
+    st.success("Changes saved locally!")
 
 # --- ADD NEW ENTRY ---
 st.subheader("➕ Add New Entry")
@@ -65,7 +79,7 @@ with st.form("new_entry_form"):
         profit_margin = (profit / sold_for) * 100 if sold_for != 0 else 0
         roi = (profit / bought_for) * 100 if bought_for != 0 else 0
 
-        new_row = {
+        new_row = pd.DataFrame([{
             "Date": date,
             "Name": name,
             "Category": category,
@@ -76,22 +90,19 @@ with st.form("new_entry_form"):
             "ROI": roi,
             "Fees": fees,
             "Net Profit": net_profit
-        }
+        }])
 
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df = pd.concat([df, new_row], ignore_index=True)
+        df.to_csv(FILE_PATH, index=False)
 
-        st.success("Entry added! (Reminder: push changes back to GitHub manually or automate)")
+        st.success("Entry added!")
 
-# --- EDITING NOTE ---
-st.subheader("✏️ Edit Existing Data")
-st.info("You can edit data directly in the table above.")
-
-# --- KPIs ---
-st.subheader("📈 Key Metrics")
+# --- KPI DASHBOARD ---
+st.subheader("📈 Metrics")
 
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("Total Revenue", f"£{filtered_df['Sold For'].sum():,.2f}")
-col2.metric("Total Profit", f"£{filtered_df['Profit'].sum():,.2f}")
-col3.metric("Avg ROI", f"{filtered_df['ROI'].mean():.2f}%")
-col4.metric("Items Sold", len(filtered_df))
+col1.metric("Revenue", f"£{filtered_df['Sold For'].sum():,.2f}")
+col2.metric("Profit", f"£{filtered_df['Profit'].sum():,.2f}")
+col3.metric("Avg ROI", f"{filtered_df['ROI'].mean():.1f}%")
+col4.metric("Items", len(filtered_df))
