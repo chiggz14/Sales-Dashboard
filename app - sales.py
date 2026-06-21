@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 
-FILE_PATH = "sales_data.csv"
+FILE_PATH = "sales dashboard.csv"
 
 st.set_page_config(layout="wide")
 st.title("📊 Sales Dashboard")
